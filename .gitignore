@@ -1,0 +1,22 @@
+# Scratch explainer, never committed
+EXPLAIN.tmp.md
+
+# Editor and OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+
+# Downloaded dataset, get it with python fetch_mbpp.py
+data_mbpp.jsonl
+
+# Generated output
+results/
