@@ -11,10 +11,12 @@
 # own control.
 
 import ast
+import collections
+import copy
 import json
+import multiprocessing
 import os
 import random
-import threading
 
 DATA = "data_mbpp.jsonl"
 
@@ -128,37 +130,74 @@ def edge_args(arg_tuples):
     return out
 
 
-def run_with_timeout(fn, seconds):
-    # Some reference solutions loop forever on inputs the published tests never
-    # reach. The thread is a daemon so a hung one dies with the process instead
-    # of holding it open.
-    result = []
-    thread = threading.Thread(target=lambda: result.append(fn()), daemon=True)
-    thread.start()
-    thread.join(seconds)
-    if thread.is_alive() or not result:
-        return None
-    return result[0]
+def keep_handled(reference, candidates):
+    kept = []
+    for args in candidates:
+        try:
+            reference(*copy.deepcopy(args))
+        except Exception:
+            continue
+        kept.append(args)
+    return kept
 
 
-def survivors(reference, candidates):
-    # Keeps the inputs the reference actually handles.
-    def check():
-        kept = []
-        for args in candidates:
-            try:
-                reference(*args)
-            except Exception:
-                continue
-            kept.append(args)
-        return kept
+def vet(job):
+    # Runs in the worker process. Checks the reference against its own published
+    # tests, then reports which generated inputs it handles.
+    setup, code, name, checks, candidates, edges = job
+    try:
+        namespace = {}
+        exec(setup, namespace)
+        exec(code, namespace)
+        reference = namespace[name]
+    except Exception:
+        return "reference will not import", [], []
 
-    return run_with_timeout(check, 10) or []
+    try:
+        if not all(reference(*copy.deepcopy(args)) == expected
+                   for args, expected in checks):
+            return "reference fails its own tests", [], []
+    except Exception:
+        return "reference fails its own tests", [], []
+
+    return "ok", keep_handled(reference, candidates), keep_handled(reference, edges)
 
 
-def make_tasks(limit=100, hidden=3, oracle=50, seed=0):
+class Vetter:
+    # Some reference solutions loop forever on inputs their published tests never
+    # reach. They run in a worker process so a hung one can be killed. A thread
+    # cannot be killed, and on a full dataset run the stuck threads pile up and
+    # starve the real work.
+
+    def __init__(self, seconds=15):
+        self.seconds = seconds
+        self.pool = None
+
+    def run(self, job):
+        if self.pool is None:
+            self.pool = multiprocessing.Pool(1)
+        try:
+            return self.pool.apply_async(vet, (job,)).get(self.seconds)
+        except multiprocessing.TimeoutError:
+            self.pool.terminate()
+            self.pool = None
+            return None
+        except Exception:
+            return None
+
+    def close(self):
+        if self.pool is not None:
+            self.pool.terminate()
+            self.pool = None
+
+
+def make_tasks(limit=None, hidden=3, oracle=50, seed=0):
+    # limit=None audits every problem in the file. skipped records why each
+    # dropped problem dropped, so the coverage of the final number is checkable.
     rng = random.Random(seed)
     tasks = []
+    skipped = collections.Counter()
+    vetter = Vetter()
 
     if not os.path.exists(DATA):
         raise SystemExit(f"{DATA} is missing. Download it with\n"
@@ -168,29 +207,19 @@ def make_tasks(limit=100, hidden=3, oracle=50, seed=0):
         records = [json.loads(line) for line in f]
 
     for record in records:
-        if len(tasks) >= limit:
+        if limit is not None and len(tasks) >= limit:
             break
 
         parsed = [parse_assert(t) for t in record["test_list"]]
         if any(p is None for p in parsed):
+            skipped["assert not a plain call"] += 1
             continue
         names = {p[0] for p in parsed}
         if len(names) != 1:
+            skipped["tests call different functions"] += 1
             continue
         name = names.pop()
         visible = [p[1] for p in parsed]
-
-        try:
-            reference = build_reference(record, name)
-        except Exception:
-            continue
-
-        # The reference has to satisfy the problem's own published tests,
-        # otherwise it is not usable as ground truth.
-        agrees = run_with_timeout(
-            lambda: all(reference(*p[1]) == p[2] for p in parsed), 5)
-        if not agrees:
-            continue
 
         wanted = hidden + oracle
         candidates = []
@@ -201,8 +230,26 @@ def make_tasks(limit=100, hidden=3, oracle=50, seed=0):
             if args is not None and args not in visible:
                 candidates.append(args)
 
-        kept = survivors(reference, candidates)
+        # The reference has to satisfy the problem's own published tests,
+        # otherwise it is not usable as ground truth.
+        job = (record.get("test_setup_code") or "", record["code"], name,
+               [(p[1], p[2]) for p in parsed], candidates, edge_args(visible))
+        result = vetter.run(job)
+        if result is None:
+            skipped["reference hangs"] += 1
+            continue
+        status, kept, kept_edges = result
+        if status != "ok":
+            skipped[status] += 1
+            continue
         if len(kept) < hidden + 10:
+            skipped["too few fuzzed inputs survive"] += 1
+            continue
+
+        try:
+            reference = build_reference(record, name)
+        except Exception:
+            skipped["reference will not import"] += 1
             continue
 
         tasks.append({
@@ -210,8 +257,12 @@ def make_tasks(limit=100, hidden=3, oracle=50, seed=0):
             "reference": reference,
             "visible_tests": visible,
             "hidden_tests": kept[:hidden],
-            "oracle_inputs": kept[hidden:] + survivors(reference, edge_args(visible)),
+            "oracle_inputs": kept[hidden:] + kept_edges,
             "description": record["text"],
         })
 
+    vetter.close()
+    print(f"{len(tasks)} usable tasks out of {len(records)} problems")
+    for reason, count in skipped.most_common():
+        print(f"  skipped {count:4d}  {reason}")
     return tasks

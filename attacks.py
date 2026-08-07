@@ -9,9 +9,11 @@
 # suite forgot that case, so what they measure is test coverage rather than
 # memorisation.
 
+from auditor import call
+
 
 def _visible_outputs(task):
-    return [task["reference"](*args) for args in task["visible_tests"]]
+    return [call(task["reference"], args) for args in task["visible_tests"]]
 
 
 def _common_output(task):
@@ -28,7 +30,8 @@ def constant_common(task):
 
 
 def memorize_visible(task):
-    table = {repr(args): task["reference"](*args) for args in task["visible_tests"]}
+    table = {repr(args): call(task["reference"], args)
+             for args in task["visible_tests"]}
     default = list(table.values())[0]
     return lambda *args: table.get(repr(args), default)
 

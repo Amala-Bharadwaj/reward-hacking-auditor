@@ -1,11 +1,20 @@
 # A test is an argument tuple. The expected output is whatever the reference
 # returns for it, so the visible, hidden and oracle sets can never disagree.
 
+import copy
+
+
+def call(fn, args):
+    # Some MBPP reference solutions mutate the list they are given, so a second
+    # call on the same input returns something different or raises. Every call
+    # gets its own copy of the arguments.
+    return fn(*copy.deepcopy(args))
+
 
 def matches(candidate, reference, tests):
     for args in tests:
         try:
-            if candidate(*args) != reference(*args):
+            if call(candidate, args) != call(reference, args):
                 return False
         except Exception:
             return False

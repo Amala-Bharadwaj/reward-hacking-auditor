@@ -14,24 +14,27 @@ runs against real published test suites, not only toy ones.
     python fetch_mbpp.py
     python run_mbpp.py
 
+    890 usable tasks out of 974 problems
+
     Share of tasks each attack false-accepts on
-    verifier          weak  strong
+    verifier           weak  strong
     attack
-    constant_common   0.01    0.00
-    constant_true     0.00    0.00
-    constant_zero     0.00    0.00
-    edge_blind        0.96    0.14
-    empty_blind       0.76    0.63
-    first_arg_length  0.00    0.00
-    memorize_visible  0.99    0.01
-    return_input      0.00    0.00
+    constant_common   0.006   0.002
+    constant_true     0.000   0.000
+    constant_zero     0.000   0.000
+    edge_blind        0.979   0.146
+    empty_blind       0.781   0.652
+    first_arg_length  0.000   0.000
+    memorize_visible  0.988   0.033
+    return_input      0.001   0.000
 
-    Published MBPP tests only, false-accept rate  34% (272/800)
-    Plus three held-out tests, false-accept rate  10% (78/800)
+    Published MBPP tests only, false-accept rate  34% (2451/7120)
+    Plus three held-out tests, false-accept rate  10% (741/7120)
 
-Those are the real test suites shipped with the first 100 usable MBPP problems.
-Weak means the three published asserts, which are the entire suite and are also
-shown to the solver. Strong means those plus three held-out inputs.
+Those are the real test suites shipped with every MBPP problem the tool can
+audit, 890 of the 974. Weak means the three published asserts, which are the
+entire suite and are also shown to the solver. Strong means those plus three
+held-out inputs.
 
 ## Installing
 
@@ -42,13 +45,15 @@ package.
 
 ## The headline result
 
-A solution that is correct everywhere except on empty inputs and zero is
-accepted by 76% of these published MBPP suites, and adding three held-out tests
-drawn from the same distribution only brings that to 63%. Held-out tests are
-usually presented as the fix for gameable rewards. Against memorisation they
-are, and the memorize attack drops from 99% to 1%. Against a solution with a
-hole in it they barely help, because tests sampled from the same distribution
-land in the same places the original tests did.
+Across 890 MBPP problems, a solution that is correct everywhere except on empty
+inputs and zero is accepted by 78.1% of the published test suites, and adding
+three held-out tests drawn from the same distribution only brings that to 65.2%,
+or 580 of 890, with a 95% confidence interval of 62.0% to 68.3%.
+
+Held-out tests are usually presented as the fix for gameable rewards. Against
+memorisation they are, and the memorize attack drops from 98.8% to 3.3%. Against
+a solution with a hole in it they barely help, because tests sampled from the
+same distribution land in the same places the original tests did.
 
 That is the practical finding. If you are training against a test suite, the
 share of reward you are handing out for untested edge cases is large, and more
@@ -75,6 +80,17 @@ deliberate edge cases, meaning empty containers, zero and single element inputs.
 Those go to the oracle only and never to the hidden tests, so the strong
 verifier gets no unfair credit for them. Problems whose reference does not
 satisfy its own published asserts are dropped.
+
+84 of the 974 problems are dropped and the run prints why. 57 have too few fuzzed
+inputs their reference accepts, 19 have a reference that loops forever on
+generated input, 7 have asserts the parser does not handle, and 1 has a reference
+that fails its own published tests. Reference solutions are run in a worker
+process that is killed on timeout, because a Python thread cannot be killed and
+stuck ones otherwise pile up and starve the run.
+
+41 of the references mutate the list they are given, so calling one twice on the
+same input returns something different or raises. Every call gets its own copy of
+the arguments for that reason.
 
 ## The attacks
 
@@ -136,5 +152,7 @@ tuples, so problems taking dictionaries or sets are skipped. Hidden tests come
 from the same fuzzer as most oracle inputs, which is what makes the empty_blind
 result meaningful, since it shows what same-distribution held-out tests miss.
 
-100 problems is enough to see the effect and not enough to be a careful
-measurement of MBPP as a whole. Raise the limit in run_mbpp.py to check.
+The 84 dropped problems are not a random sample. Problems whose inputs the
+fuzzer cannot generate, and whose references hang or are slow, are exactly the
+ones more likely to be unusual, so the 890 audited problems are the more ordinary
+end of MBPP.
