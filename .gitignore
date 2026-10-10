@@ -1,6 +1,9 @@
 # Scratch explainer, never committed
 EXPLAIN.tmp.md
 
+# Personal study doc, never committed
+QUESTIONS.md
+
 # Editor and OS
 .vscode/
 .idea/
@@ -20,3 +23,15 @@ data_mbpp.jsonl
 
 # Generated output
 results/
+
+# Private working context, never committed
+CLAUDE.md
+PAPER_BRIEF.md
+review.html
+_cost.py
+_cost2.py
+
+# Paper draft held back until the numbers are rewritten
+paper.tex
+paper.pdf
+neurips_2026.sty

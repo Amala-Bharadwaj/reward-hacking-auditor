@@ -253,11 +253,17 @@ def make_tasks(limit=None, hidden=3, oracle=50, seed=0):
             continue
 
         tasks.append({
+            "benchmark": "mbpp",
             "name": f"{name}_{record['task_id']}",
             "reference": reference,
+            # Source is kept so attributes.py can mutate the reference. The
+            # callable alone is not enough to compute a mutation score.
+            "source": record["code"],
+            "func_name": name,
             "visible_tests": visible,
             "hidden_tests": kept[:hidden],
             "oracle_inputs": kept[hidden:] + kept_edges,
+            "edge_tests": kept_edges,
             "description": record["text"],
         })
 

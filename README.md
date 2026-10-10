@@ -133,13 +133,115 @@ Four hand-written tasks where the failure modes are visible by eye. Weak 34%,
 strong 0%. Useful for understanding the measurement, not evidence about anything
 in the wild.
 
+## What held-out tests actually remove
+
+The table above comes from constructed probes, which a reviewer can reasonably
+call idealised. So the same question was put to code no one constructed.
+
+Every one of the 857 false positives a local model wrote was replayed against its
+oracle and sorted by which region of the input space it is actually wrong on. The
+regions are empty container, integer zero, outside the range the published inputs
+span counting container lengths, and ordinary inputs meaning none of those. Being
+wrong on an ordinary input takes precedence over everything else, because that is
+the failure the published tests could have caught.
+
+    failure region                published  survives held-out  removed
+    wrong on ordinary inputs            537               177   67.0%  [63, 71]
+    outside published range only        163               120   26.4%  [20, 34]
+    mixed edge regions                   80                45   43.8%  [33, 55]
+    empty or zero only                   77                74    3.9%  [1, 11]
+    all                                 857               416   51.5%
+
+Held-out tests remove 67.0% of the failures that live on ordinary inputs and 3.9%
+of the ones that live only on empty input or zero, and those intervals are nowhere
+near each other. The standard defence works on the failures the suite could
+already have caught and leaves the ones it never looks at.
+
+It does worse than leave them. Failures confined to empty or zero are 9.0% of all
+false positives and 17.8% of the ones that survive the defence, so the defence
+concentrates them.
+
+One issue is that "outside published range" is a wide region. The envelope is
+built from three published inputs, so almost any wrong program fails somewhere
+outside it. That row is the weakest of the four as evidence. The "empty or zero
+only" row is narrow and specific and is where the result sits.
+
+Lookup tables are bounded rather than asserted. All 54 attempts the hardened
+detector flags land in "wrong on ordinary inputs" or "mixed", none in the two
+rows the claim rests on, so none of the 74 empty-or-zero survivors is a candidate
+that memorised the published answers.
+
+Run it with `python failure_modes.py`.
+
+## An independent oracle
+
+Ground truth used to be this tool's own fuzzer. A suite's blind spots correlate
+with a fuzzer built from that suite's values, so the measurement was partly
+circular. `plus_oracle.py` swaps the inputs for EvalPlus, a published correction
+of MBPP and HumanEval that adds a large curated input set per problem. The same
+reference decides the right answer under both, so only the source of the inputs
+changes. Swapping the reference as well was deliberately not done, because it
+would confound an input-coverage change with a ground-truth change.
+
+The ordering survives. Share of successful attacks removed by held-out tests on
+HumanEval, fuzzed oracle first and EvalPlus oracle second. Memorisation 92.8% and
+92.8%. edge_blind 68.3% and 62.5%. empty_blind 14.3% and 10.7%.
+
+Where the two references disagree is a floor on how precisely any rate here can
+be known. On curated inputs both of them answer, they agree on 90.5%.
+
+## Four models
+
+`modal_run.py` runs the generation in parallel containers on Modal, one per
+model. The slate is qwen2.5-coder at 1.5b, 3b and 7b, which holds tokenizer, data
+and pipeline fixed so only size varies, plus deepseek-coder 6.7b-instruct as a
+second family at matched scale. Ten samples per task over 890 tasks, so close to
+8,900 attempts each.
+
+That the four containers served four different models was checked rather than
+assumed. Across the shared task-sample keys, byte-identical programs between any
+two models run from 7 to 136 and are all trivial one-liners. Mean program length
+falls as capability rises inside the qwen family, 419 characters at 1.5b, 326 at
+3b, 124 at 7b, with deepseek at 217.
+
+`rescore.py` applies the EvalPlus oracle and the hardened lookup-table detector
+to stored code without regenerating anything, so the model, seeds and sampling
+stay as reported.
+
+## Pre-registration
+
+`PREREG.md` was written before the oracle swap and records what was predicted.
+
+One prediction came out wrong, and it is left standing. Every rate was predicted
+to rise under the richer oracle, and empty_blind on HumanEval fell instead, 40.3%
+to 20.1%. Chasing that found a real bug. The oracle had been capped at 300 inputs
+per problem by even striding, and since only about 1.7 of HumanEval+'s median 977
+inputs per problem contain an empty container, the cap had deleted the only empty
+probe from 38 of the 92 problems that had one. The cap is removed, the capped
+numbers are discarded, and the whole thing is logged as deviation D1.
+
+A second bug is recorded the same way. `render_tests` built the model's prompt by
+calling the reference directly instead of through `call()`, the one function that
+copies its arguments first, and MBPP references mutate what they are given. A
+reference that sorts in place rewrote the stored published tests, so a candidate
+whose whole body is `return arr` passed all three and was counted as a false
+positive. It reached 44 of 890 tasks. Fixed, and every number here is from after
+the fix.
+
 ## Files
 
 fetch_mbpp.py downloads the dataset. mbpp.py turns MBPP problems into tasks.
 tasks.py holds the toy tasks. attacks.py holds the cheat generators. auditor.py
-holds the verifiers, the oracle and the false-accept count. run_mbpp.py and
-run_audit.py run the two suites and write into results. llm_attack.py is the
-Claude version.
+holds the verifiers, the oracle and the false-accept count. run_mbpp.py,
+run_humaneval.py and run_audit.py run the suites and write into results.
+llm_attack.py generates the model-written cheats.
+
+plus_oracle.py builds the EvalPlus oracle. rescore.py re-scores stored attempts
+under it without regenerating. failure_modes.py produces the failure-region
+partition. attributes.py computes the per-problem features and analysis.py fits
+the regressions with Benjamini-Hochberg correction. modal_run.py runs the model
+slate in parallel containers. livecodebench.py is diagnosed and not run, for the
+reasons in its docstring.
 
 ## Limits
 
