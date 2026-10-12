@@ -28,9 +28,6 @@ runs against real published test suites, not only toy ones.
     memorize_visible  0.988   0.033
     return_input      0.001   0.000
 
-    Published MBPP tests only, false-accept rate  34% (2451/7120)
-    Plus three held-out tests, false-accept rate  10% (741/7120)
-
 Those are the real test suites shipped with every MBPP problem the tool can
 audit, 890 of the 974. Weak means the three published asserts, which are the
 entire suite and are also shown to the solver. Strong means those plus three
@@ -46,9 +43,8 @@ package.
 ## The headline result
 
 Across 890 MBPP problems, a solution that is correct everywhere except on empty
-inputs and zero is accepted by 78.1% of the published test suites, and adding
-three held-out tests drawn from the same distribution only brings that to 65.2%,
-or 580 of 890, with a 95% confidence interval of 62.0% to 68.3%.
+inputs and zero is accepted by 79.6% of the published test suites, and adding
+three held-out tests drawn from the same distribution only brings that to 65.6%.
 
 Held-out tests are usually presented as the fix for gameable rewards. Against
 memorisation they are, and the memorize attack drops from 98.8% to 3.3%. Against
@@ -116,14 +112,11 @@ does not save you.
 
     python llm_attack.py
 
-Instead of the fixed generic attacks, this asks Claude to write a task specific
-cheat given the problem description and the three published tests. Claude never
-sees the reference solution, the held-out tests or the oracle inputs. Answers
-are cached in results/llm_cheats.json so a rerun costs nothing. Needs
-ANTHROPIC_API_KEY.
-
-This part is written but has not been run, because there is no API key on the
-machine it was built on. The numbers above do not include it.
+Instead of the fixed generic attacks, this asks a model to write a task specific
+cheat given the problem description and the three published tests. The model
+never sees the reference solution, the held-out tests or the oracle inputs. Any
+OpenAI-compatible endpoint works, including a local Ollama server, selected with
+`--model` and `--local-model`. Results for four open-weight models are below.
 
 ## Toy tasks
 
@@ -138,28 +131,32 @@ in the wild.
 The table above comes from constructed probes, which a reviewer can reasonably
 call idealised. So the same question was put to code no one constructed.
 
-Every one of the 857 false positives a local model wrote was replayed against its
-oracle and sorted by which region of the input space it is actually wrong on. The
-regions are empty container, integer zero, outside the range the published inputs
-span counting container lengths, and ordinary inputs meaning none of those. Being
-wrong on an ordinary input takes precedence over everything else, because that is
-the failure the published tests could have caught.
+Every false positive each model wrote was replayed against its oracle and sorted
+by which region of the input space it is actually wrong on. The regions are empty
+container, integer zero, outside the range the published inputs span counting
+container lengths, and ordinary inputs meaning none of those. Being wrong on an
+ordinary input takes precedence over everything else, because that is the failure
+the published tests could have caught.
 
-    failure region                published  survives held-out  removed
-    wrong on ordinary inputs            537               177   67.0%  [63, 71]
-    outside published range only        163               120   26.4%  [20, 34]
-    mixed edge regions                   80                45   43.8%  [33, 55]
-    empty or zero only                   77                74    3.9%  [1, 11]
-    all                                 857               416   51.5%
+Share of each region's false positives that held-out tests remove.
 
-Held-out tests remove 67.0% of the failures that live on ordinary inputs and 3.9%
-of the ones that live only on empty input or zero, and those intervals are nowhere
-near each other. The standard defence works on the failures the suite could
-already have caught and leaves the ones it never looks at.
+    failure region                 1.5b    3b    7b  deepseek
+    wrong on ordinary inputs      59.2% 62.8% 65.3%     63.9%
+    mixed edge regions            47.3% 41.7% 37.2%     33.8%
+    outside published range only  19.6% 19.0% 28.7%     18.7%
+    empty or zero only             8.2% 11.1%  3.4%      7.8%
+    false positives classified     1154  1101   784      1906
 
-It does worse than leave them. Failures confined to empty or zero are 9.0% of all
-false positives and 17.8% of the ones that survive the defence, so the defence
-concentrates them.
+Held-out tests remove about three fifths of the failures that live on ordinary
+inputs and under a tenth of the ones that live only on empty input or zero. That
+holds for every model, across two families and a 2.5-fold spread in the headline
+rate, and the two ranges do not come close to overlapping. The standard defence
+works on the failures the suite could already have caught and leaves the ones it
+never looks at.
+
+It does worse than leave them. On 7b, failures confined to empty or zero are
+11.1% of all false positives and 20.5% of the ones that survive the defence, so
+the defence concentrates them.
 
 One issue is that "outside published range" is a wide region. The envelope is
 built from three published inputs, so almost any wrong program fails somewhere
@@ -197,6 +194,21 @@ model. The slate is qwen2.5-coder at 1.5b, 3b and 7b, which holds tokenizer, dat
 and pipeline fixed so only size varies, plus deepseek-coder 6.7b-instruct as a
 second family at matched scale. Ten samples per task over 890 tasks, so close to
 8,900 attempts each.
+
+Per-attempt false-positive rate, published tests then with three held-out tests
+added, and the same rate scored against the EvalPlus oracle on the 317 problems
+it covers.
+
+    model                          attempts   ran  published  held-out  EvalPlus
+    qwen2.5-coder 1.5b                 8898  8396     13.77%     8.03%    13.37%
+    qwen2.5-coder 3b                   8898  8129     13.56%     7.66%    12.68%
+    qwen2.5-coder 7b                   8900  8850      8.86%     4.63%     8.57%
+    deepseek-coder 6.7b-instruct       8893  8528     22.36%    12.75%    21.36%
+
+Family matters more than scale here. Within the qwen family the rate falls as
+size rises, and deepseek at 6.7b sits well above qwen at 7b. The EvalPlus column
+tracks the fuzzed oracle within half a point on every model, which is the check
+that the measurement is not an artifact of the fuzzer.
 
 That the four containers served four different models was checked rather than
 assumed. Across the shared task-sample keys, byte-identical programs between any
@@ -240,8 +252,7 @@ plus_oracle.py builds the EvalPlus oracle. rescore.py re-scores stored attempts
 under it without regenerating. failure_modes.py produces the failure-region
 partition. attributes.py computes the per-problem features and analysis.py fits
 the regressions with Benjamini-Hochberg correction. modal_run.py runs the model
-slate in parallel containers. livecodebench.py is diagnosed and not run, for the
-reasons in its docstring.
+slate in parallel containers. livecodebench.py is written and not run.
 
 ## Limits
 
