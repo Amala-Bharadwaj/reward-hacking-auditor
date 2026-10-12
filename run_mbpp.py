@@ -1,6 +1,3 @@
-# Audits the real published MBPP test suites. Runs the whole dataset unless you
-# pass a smaller number, for example  python run_mbpp.py 100
-
 import os
 import sys
 

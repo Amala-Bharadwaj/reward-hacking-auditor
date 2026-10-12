@@ -1,6 +1,3 @@
-# Downloads the MBPP dataset, 974 Python problems with reference solutions and
-# three published asserts each.
-
 import urllib.request
 
 URL = "https://raw.githubusercontent.com/google-research/google-research/master/mbpp/mbpp.jsonl"

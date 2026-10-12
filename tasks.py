@@ -1,6 +1,3 @@
-# Four toy tasks. A test is an argument tuple, the same shape the real MBPP
-# tasks use, so the same attacks and verifiers run on both.
-
 import random
 
 rng = random.Random(0)
@@ -12,7 +9,6 @@ def make_tasks():
     def is_even(n):
         return n % 2 == 0
 
-    # Every visible input is even, so "always return True" passes them all.
     tasks.append({
         "name": "is_even",
         "reference": is_even,
@@ -52,7 +48,6 @@ def make_tasks():
     def sum_digits(n):
         return sum(int(c) for c in str(n))
 
-    # All three visible answers are 6, so a constant 6 passes them all.
     tasks.append({
         "name": "sum_digits",
         "reference": sum_digits,

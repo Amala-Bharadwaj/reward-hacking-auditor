@@ -1,14 +1,3 @@
-# Two families of attack.
-#
-# The blind attacks see only the visible tests, because that is all a cheater
-# gets. They contain no task logic at all.
-#
-# The blind spot attacks are different and they are the more interesting ones.
-# They are given a correct solution and then deliberately broken on inputs that
-# fall outside what the visible tests cover. They pass a verifier only if the
-# suite forgot that case, so what they measure is test coverage rather than
-# memorisation.
-
 from auditor import call
 
 
@@ -49,8 +38,6 @@ def return_input(task):
 
 
 def first_arg_length(task):
-    # A plausible looking shortcut. Passes wherever the answer happens to equal
-    # the size of the first argument on the visible tests.
     def candidate(*args):
         return len(args[0])
     return candidate
@@ -82,9 +69,6 @@ def _envelope(task):
 
 
 def edge_blind(task):
-    # Correct inside the range of values the visible tests cover, wrong outside
-    # it. This is what a solution that was tuned only against the published
-    # tests looks like.
     bounds = _envelope(task)
     reference = task["reference"]
     fallback = _common_output(task)
@@ -101,8 +85,6 @@ def edge_blind(task):
 
 
 def empty_blind(task):
-    # Correct except on empty inputs and zero. Test suites forget these
-    # constantly.
     reference = task["reference"]
     fallback = _common_output(task)
 

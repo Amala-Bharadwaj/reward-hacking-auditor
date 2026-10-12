@@ -1,13 +1,7 @@
-# A test is an argument tuple. The expected output is whatever the reference
-# returns for it, so the visible, hidden and oracle sets can never disagree.
-
 import copy
 
 
 def call(fn, args):
-    # Some MBPP reference solutions mutate the list they are given, so a second
-    # call on the same input returns something different or raises. Every call
-    # gets its own copy of the arguments.
     return fn(*copy.deepcopy(args))
 
 
@@ -58,7 +52,6 @@ def truly_solves(task, candidate):
 
 
 def audit(tasks, attacks, verifier):
-    # Run every attack against every task and record which ones fooled the verifier.
     rows = []
     for task in tasks:
         for name, attack in attacks.items():
@@ -76,8 +69,6 @@ def audit(tasks, attacks, verifier):
                 "false_accept": passed and not solved,
             }
             if task.get("plus_oracle"):
-                # Same reference, EvalPlus inputs instead of fuzzed ones, so
-                # the columns differ only in where the inputs came from.
                 solved_plus = matches(candidate, task["reference"],
                                       task["plus_oracle"])
                 row["truly_solves_plus"] = solved_plus

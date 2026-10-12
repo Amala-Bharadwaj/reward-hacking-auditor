@@ -1,16 +1,3 @@
-# Builds auditor tasks out of HumanEval problems.
-#
-# HumanEval ships a canonical solution and a check(candidate) function rather
-# than a list of asserts. The asserts live inside check, calling either
-# `candidate` or the entry point by name, so they are pulled out of the AST
-# instead of parsed a line at a time.
-#
-# Everything downstream is imported from mbpp so the two benchmarks are measured
-# by the same code. Only the parsing and the source assembly differ.
-#
-# Run it with  python humaneval.py         (whole set)
-#              python humaneval.py 40      (first 40 problems)
-
 from __future__ import annotations
 
 import ast
@@ -23,8 +10,6 @@ DATASET = "openai_humaneval"
 
 
 def parse_asserts(test_source, entry_point):
-    # Every `assert f(literals...) == literal` inside check(), where f is either
-    # `candidate` or the entry point. Anything else is dropped.
     try:
         tree = ast.parse(test_source)
     except SyntaxError:
@@ -75,8 +60,6 @@ def make_tasks(limit=None, hidden=3, oracle=50, seed=0, min_visible=3):
             continue
 
         visible = [args for args, _ in parsed]
-        # The prompt carries the imports, signature and docstring. The canonical
-        # solution is only the body, so neither runs on its own.
         source = record["prompt"] + record["canonical_solution"]
 
         wanted = hidden + oracle

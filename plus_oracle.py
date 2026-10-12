@@ -1,13 +1,3 @@
-# Oracle inputs taken from EvalPlus instead of from our own fuzzer.
-#
-# The fuzzer in mbpp.py generates inputs that look like the published ones, so
-# an oracle built from it shares whatever blind spots the published tests have.
-# EvalPlus ships a curated input set per problem, built independently of this
-# work, and using it removes that circularity.
-#
-# The inputs live inside the dataset's `test` field as a plain `inputs = [...]`
-# assignment, so they are read out of the AST rather than by executing it.
-
 from __future__ import annotations
 
 import ast
@@ -54,10 +44,6 @@ def reference_source(benchmark, record):
 
 @functools.lru_cache(maxsize=None)
 def plus_table(benchmark):
-    # Returns {task_id: {"inputs": [...], "source": str}}. Problems EvalPlus
-    # does not cover are simply absent, which is how callers detect them.
-    # EvalPlus corrects reference solutions as well as adding inputs, so the
-    # source is carried too and the caller decides which reference to trust.
     from datasets import load_dataset
 
     records = load_dataset(DATASETS[benchmark], split="test")
@@ -79,15 +65,8 @@ def plus_inputs(benchmark):
 
 CACHE = "results/plus_oracle_{}.jsonl"
 
-# Every EvalPlus input is used. An earlier version strided HumanEval+ down to
-# 300 per problem for runtime, which silently removed the only empty-container
-# probe from 38 of the 92 problems that have one, and those probes are what
-# catches an attack that is wrong only on empty input.
-
 
 def _filter_job(job):
-    # Runs in a worker process. EvalPlus inputs are adversarial by design and
-    # some of them make an MBPP reference loop, so this has to be killable.
     setup, source, name, inputs = job
     ns = {}
     exec(setup, ns)
@@ -104,9 +83,6 @@ def _filter_job(job):
 
 
 def build_cache(benchmark, tasks, setups=None):
-    # Keeps only the inputs our own reference answers, the same filter the
-    # fuzzed oracle already passes through, so the two oracles differ in where
-    # the inputs came from and in nothing else.
     from attributes import Worker
 
     table = plus_table(benchmark)
@@ -150,8 +126,6 @@ def load_cache(benchmark):
 
 
 def attach(tasks, benchmark):
-    # Tasks EvalPlus does not cover keep no plus_oracle key at all, so callers
-    # can tell absent from empty.
     cache = load_cache(benchmark)
     hit = 0
     for task in tasks:

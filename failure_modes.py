@@ -1,13 +1,3 @@
-# Classifies each model-written false positive by which region of the oracle it
-# actually fails on.
-#
-# The constructed probes in Section 3.1 are defined to be wrong on a chosen
-# region, which makes them a hypothesis about where search goes rather than
-# evidence for it. This partitions real model failures over the same regions, so
-# the probes can be checked against the failure distribution instead of assumed.
-#
-# Run it with  python failure_modes.py
-
 from __future__ import annotations
 
 import collections
@@ -65,10 +55,6 @@ def _job(job):
 
 
 def classify(failed_regions):
-    # Precedence runs from the most specific region outwards. A candidate that
-    # is ever wrong on an ordinary input is reported as such whatever else it
-    # also fails, because that is the failure the published tests could have
-    # caught.
     if "inside" in failed_regions:
         return "wrong on ordinary inputs"
     if failed_regions <= {"empty", "zero"}:
@@ -91,8 +77,6 @@ def main():
             except json.JSONDecodeError:
                 continue
 
-    # The re-scored file carries verdicts, not source, so the code comes from the
-    # original attempts keyed the same way.
     codes = {}
     with open(attempts, encoding="utf-8") as f:
         for line in f:
@@ -124,8 +108,6 @@ def main():
             cache[row["task"]] = (pairs, [region(a, bounds) for a, _ in pairs])
         pairs, regions = cache[row["task"]]
         failed = scorer.run((code, task["func_name"], pairs))
-        # Scorer reports a timeout or a crashed pool as a dict, not a list of
-        # failing indices, and a candidate that will not import comes back None.
         if not isinstance(failed, list) or not failed:
             unclassified += 1
             continue

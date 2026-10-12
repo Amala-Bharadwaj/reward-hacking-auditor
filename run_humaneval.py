@@ -1,6 +1,3 @@
-# Audits the published HumanEval test suites with the same attacks and the same
-# verifiers used for MBPP. Runs the whole set unless you pass a smaller number.
-
 import os
 import sys
 

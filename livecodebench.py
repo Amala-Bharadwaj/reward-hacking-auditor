@@ -1,29 +1,3 @@
-# Builds auditor tasks out of LiveCodeBench problems.
-#
-# The structural difference from MBPP is that LiveCodeBench ships no reference
-# solution, so there is nothing to execute as ground truth and nothing to fuzz
-# against. What it ships instead is a large private test set, 30 to 50 cases
-# per problem, alongside a handful of public ones.
-#
-# That maps onto the auditor cleanly without any fuzzing at all:
-#
-#   visible_tests  = the public tests, which is what a solver is shown
-#   hidden_tests   = a few private cases, standing in for a held-out suite
-#   oracle_inputs  = the remaining private cases, used as ground truth
-#   reference      = a lookup over every known input/output pair
-#
-# The reference is a table rather than a program, which is fine because it is
-# only ever called on inputs that came from the dataset. auditor.py never
-# invents an input of its own.
-#
-# Only functional-style problems are usable. Codeforces and AtCoder problems
-# are graded on stdin/stdout, and a stdin program is not a callable, so those
-# are counted and dropped. That skew is real and belongs in the paper: what
-# survives is the LeetCode end of the benchmark.
-#
-# Fetch the data once with  python livecodebench.py --fetch
-# then                      python livecodebench.py --limit 50
-
 from __future__ import annotations
 
 import argparse
@@ -40,15 +14,11 @@ VERSION = "release_v6"
 def fetch(version=VERSION):
     from datasets import load_dataset
 
-    # trust_remote_code is required by this dataset's loader script.
     return load_dataset(DATASET, version_tag=version, split="test",
                         trust_remote_code=True)
 
 
 def decode_tests(blob):
-    # Public tests are plain JSON. Private tests are zlib-compressed pickled
-    # JSON behind base64, to keep them out of search indexes and out of
-    # training data. Both shapes turn up, so try the cheap one first.
     if not blob:
         return []
     if isinstance(blob, list):
@@ -64,10 +34,6 @@ def decode_tests(blob):
 
 
 def parse_case(case):
-    # A functional case looks like {"input": "[1, 2]\n3", "output": "4",
-    # "testtype": "functional"}. Each line of the input is one argument,
-    # JSON encoded. Anything that will not parse is dropped rather than
-    # guessed at.
     if case.get("testtype") != "functional":
         return None
     try:
@@ -76,8 +42,6 @@ def parse_case(case):
         expected = json.loads(str(case["output"]).strip())
     except (json.JSONDecodeError, KeyError):
         return None
-    # Lists are unhashable, so the lookup key has to be repr based. Tuples of
-    # lists are common here, which is why this is not a plain dict key.
     return args, expected
 
 
@@ -87,7 +51,6 @@ def build_reference(pairs, name):
     def reference(*args):
         key = repr(args)
         if key not in table:
-            # Only reachable if something outside this module invents an input.
             raise KeyError(f"{name}: no ground truth for {key}")
         return table[key]
 
@@ -109,16 +72,12 @@ def make_tasks(limit=None, hidden=3, min_oracle=10, version=VERSION):
         private = [p for p in private if p is not None]
 
         if not public:
-            # Almost always a stdin/stdout problem from Codeforces or AtCoder.
             skipped["no functional public tests"] += 1
             continue
         if len(private) < hidden + min_oracle:
             skipped["too few private tests"] += 1
             continue
 
-        # A problem whose public and private cases disagree on the same input
-        # cannot be used as ground truth, the same way an MBPP reference that
-        # fails its own tests cannot.
         table = {}
         conflict = False
         for args, expected in public + private:
@@ -136,8 +95,6 @@ def make_tasks(limit=None, hidden=3, min_oracle=10, version=VERSION):
             "benchmark": "livecodebench",
             "name": name,
             "reference": build_reference(public + private, name),
-            # No source to mutate, so attributes.py reports mutation_score None
-            # for these and the regression treats it as missing.
             "source": None,
             "func_name": name,
             "visible_tests": [args for args, _ in public],

@@ -1,15 +1,3 @@
-# Builds auditor tasks out of real MBPP problems.
-#
-# MBPP gives each problem a reference solution and three published assert
-# statements. Those three asserts are the whole test suite and they are also
-# shown to the solver, so they are exactly the visible tests the auditor
-# attacks. Hidden tests are fuzzed inputs that look like the published ones.
-# Oracle inputs are those plus deliberate edge cases.
-#
-# The reference solutions are executed. MBPP is a well known public dataset but
-# this is still running downloaded code, so keep the file you audit under your
-# own control.
-
 import ast
 import collections
 import copy
@@ -22,8 +10,6 @@ DATA = "data_mbpp.jsonl"
 
 
 def parse_assert(line):
-    # Pulls the function name, the argument tuple and the expected answer out of
-    # "assert f(a, b) == c". Returns None for anything that is not that shape.
     node = ast.parse(line.strip()).body[0]
     if not isinstance(node, ast.Assert):
         return None
@@ -53,8 +39,6 @@ def build_reference(record, name):
 
 
 def fuzz(samples, rng):
-    # Makes a new value that looks like the values seen at this argument
-    # position. Returns None if the type is one we do not generate.
     base = rng.choice(samples)
 
     if isinstance(base, bool):
@@ -106,9 +90,6 @@ def fuzz_args(arg_tuples, rng):
 
 
 def edge_args(arg_tuples):
-    # One edge value swapped into one position at a time. These go into the
-    # oracle only, never into the hidden tests, so the strong verifier gets no
-    # unfair credit for them.
     out = []
     base = arg_tuples[0]
     for i, value in enumerate(base):
@@ -142,8 +123,6 @@ def keep_handled(reference, candidates):
 
 
 def vet(job):
-    # Runs in the worker process. Checks the reference against its own published
-    # tests, then reports which generated inputs it handles.
     setup, code, name, checks, candidates, edges = job
     try:
         namespace = {}
@@ -164,10 +143,6 @@ def vet(job):
 
 
 class Vetter:
-    # Some reference solutions loop forever on inputs their published tests never
-    # reach. They run in a worker process so a hung one can be killed. A thread
-    # cannot be killed, and on a full dataset run the stuck threads pile up and
-    # starve the real work.
 
     def __init__(self, seconds=15):
         self.seconds = seconds
@@ -192,8 +167,6 @@ class Vetter:
 
 
 def make_tasks(limit=None, hidden=3, oracle=50, seed=0):
-    # limit=None audits every problem in the file. skipped records why each
-    # dropped problem dropped, so the coverage of the final number is checkable.
     rng = random.Random(seed)
     tasks = []
     skipped = collections.Counter()
@@ -230,8 +203,6 @@ def make_tasks(limit=None, hidden=3, oracle=50, seed=0):
             if args is not None and args not in visible:
                 candidates.append(args)
 
-        # The reference has to satisfy the problem's own published tests,
-        # otherwise it is not usable as ground truth.
         job = (record.get("test_setup_code") or "", record["code"], name,
                [(p[1], p[2]) for p in parsed], candidates, edge_args(visible))
         result = vetter.run(job)
@@ -256,8 +227,6 @@ def make_tasks(limit=None, hidden=3, oracle=50, seed=0):
             "benchmark": "mbpp",
             "name": f"{name}_{record['task_id']}",
             "reference": reference,
-            # Source is kept so attributes.py can mutate the reference. The
-            # callable alone is not enough to compute a mutation score.
             "source": record["code"],
             "func_name": name,
             "visible_tests": visible,

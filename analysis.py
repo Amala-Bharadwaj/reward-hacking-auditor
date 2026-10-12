@@ -1,16 +1,3 @@
-# Joins the attack results to the suite attributes and asks which properties
-# of a test suite predict that it can be gamed.
-#
-# This is the part that makes the paper predictive rather than descriptive.
-# A rate tells a benchmark author they have a problem. A coefficient tells
-# them what to change.
-#
-# Inputs:  results/attributes.jsonl    from attributes.py
-#          results/llm_attempts.jsonl  from llm_attack.py
-# Output:  results/analysis.txt and a printed summary
-#
-# Run it with  python analysis.py
-
 from __future__ import annotations
 
 import json
@@ -32,13 +19,11 @@ def read_jsonl(path):
             try:
                 rows.append(json.loads(line))
             except json.JSONDecodeError:
-                continue  # partial last line from an interrupted run
+                continue
     return pd.DataFrame(rows)
 
 
 def wilson(successes, n, z=1.96):
-    # Normal-approximation intervals are wrong at the tails and these rates
-    # sit near zero often enough to matter.
     if n == 0:
         return (0.0, 0.0)
     p = successes / n
@@ -49,8 +34,6 @@ def wilson(successes, n, z=1.96):
 
 
 def benjamini_hochberg(pvalues):
-    # Pre-registered correction. Reported for every term including null ones,
-    # so nothing is dropped from the table after the results are seen.
     ordered = sorted(pvalues.items(), key=lambda kv: kv[1])
     m = len(ordered)
     out = {}
@@ -63,7 +46,6 @@ def benjamini_hochberg(pvalues):
 
 
 def per_task(attempts):
-    # One row per task: was it ever gamed, and how often.
     ran = attempts[attempts["ran"]]
     spec = dict(
         attempts_ran=("false_accept", "size"),
@@ -77,8 +59,6 @@ def per_task(attempts):
             spec[alias] = (column, "sum")
     grouped = ran.groupby(["benchmark", "task"]).agg(**spec).reset_index()
     grouped["exploited"] = grouped["n_gamed"] > 0
-    # Pre-registration option C: the undefended outcome and the outcome after
-    # the standard defence are both reported, never one in place of the other.
     grouped["exploited_defended"] = grouped["n_gamed_held_out"] > 0
     for alias, outcome in (("n_gamed_plus", "exploited_plus"),
                            ("n_gamed_plus_held_out", "exploited_plus_defended")):
@@ -111,8 +91,6 @@ def headline(attempts, tasks, out):
 
 
 def by_group(frame, column, out, min_n=15):
-    # Exploitation rate sliced by one attribute. Groups smaller than min_n are
-    # reported but flagged, because a 100% rate on three tasks is not a finding.
     out.append("")
     out.append(f"exploitation rate by {column}")
     grouped = frame.groupby(column)["exploited"].agg(["size", "sum"])
@@ -125,9 +103,6 @@ def by_group(frame, column, out, min_n=15):
 
 
 def by_bucket(frame, column, out, bins=4):
-    # Continuous attributes get quantile buckets rather than an assumed
-    # functional form. If the relationship is monotone it will show here, and
-    # if it is not, a regression coefficient would have hidden that.
     usable = frame[frame[column].notna()]
     if len(usable) < bins * 10 or usable[column].nunique() < bins:
         out.append("")
@@ -145,9 +120,6 @@ def by_bucket(frame, column, out, bins=4):
 
 
 def regression(frame, out, outcome="exploited", with_mutation=True):
-    # Logistic regression is the headline claim, but it is optional: the
-    # bucketed tables above carry the result on their own and statsmodels is
-    # not a dependency worth forcing.
     try:
         import statsmodels.formula.api as smf
     except ImportError:
@@ -173,8 +145,6 @@ def regression(frame, out, outcome="exploited", with_mutation=True):
              "input_diversity", "has_edge_case", "input_type", "benchmark"]
     if with_mutation:
         terms.insert(0, "mutation_score")
-    # A predictor that never varies carries no information and makes the fit
-    # degenerate, so its coefficient runs off to infinity.
     varying = [t for t in terms if usable[t].nunique() > 1]
     dropped = [t for t in terms if t not in varying]
     formula = f"{outcome} ~ " + " + ".join(
@@ -229,9 +199,6 @@ def main():
     by_bucket(frame, "dummy_pass_rate", out)
     by_bucket(frame, "input_diversity", out)
 
-    # Pre-registration option C crossed with the two missingness models: the
-    # undefended and defended outcomes, each with and without mutation_score.
-    # All four are reported whatever they show.
     outcomes = ["exploited", "exploited_defended"]
     outcomes += [c for c in ("exploited_plus", "exploited_plus_defended")
                  if c in frame]

@@ -1,18 +1,3 @@
-# Per suite features, so the question can be "which properties of a test suite
-# make it exploitable" rather than "what is the rate on this benchmark".
-#
-# Mutation score is the primary feature and is deliberately not branch
-# coverage. Coverage says a line ran; it does not say the suite would have
-# noticed if that line were wrong. Mutation score does, and the literature has
-# it correlating far better with real bug detection.
-#
-# Everything here is computed from the visible tests only, because the visible
-# tests are what a solver is optimising against. Using hidden or oracle inputs
-# would measure a suite nobody is actually graded on.
-#
-# Run it with  python attributes.py            (whole dataset)
-#              python attributes.py 100        (first 100 problems)
-
 from __future__ import annotations
 
 import ast
@@ -24,9 +9,6 @@ import sys
 
 from auditor import call
 
-# Comparison flips, arithmetic swaps and boundary shifts. Small on purpose:
-# every operator here produces a program that is still syntactically valid and
-# still plausible, which is the point of mutation testing.
 COMPARE_SWAP = {
     ast.Lt: ast.LtE, ast.LtE: ast.Lt,
     ast.Gt: ast.GtE, ast.GtE: ast.Gt,
@@ -39,9 +21,6 @@ BINOP_SWAP = {
 
 
 class _Mutator(ast.NodeTransformer):
-    # Applies exactly one mutation, the target-th one encountered. Walking the
-    # tree once per mutant is slower than collecting sites first but keeps the
-    # numbering stable, which matters because the seed has to be reproducible.
 
     def __init__(self, target):
         self.target = target
@@ -84,8 +63,6 @@ def make_mutant(source, index):
 
 
 def _mutation_job(job):
-    # Runs in a worker process. A mutated loop condition turns terminating code
-    # into an infinite loop routinely, so this has to be killable.
     source, name, visible, expected = job
     total = count_sites(source)
     if total == 0:
@@ -97,7 +74,7 @@ def _mutation_job(job):
             exec(make_mutant(source, i), namespace)
             mutant = namespace[name]
         except Exception:
-            killed += 1  # a mutant that will not even import is caught
+            killed += 1
             continue
         for args, want in zip(visible, expected):
             try:
@@ -111,9 +88,6 @@ def _mutation_job(job):
 
 
 def _stub_job(job):
-    # Dummy pass rate: how many of the visible tests a trivially wrong
-    # implementation passes. A suite where a stub scores well is a suite that
-    # is barely asserting anything.
     _, _, visible, expected = job
     stubs = [lambda *a: None, lambda *a: 0, lambda *a: [],
              lambda *a: "", lambda *a: True]
@@ -133,8 +107,6 @@ def _safe_eq(fn, args, want):
 
 
 class Worker:
-    # Same pattern as mbpp.Vetter. One pool, terminated and rebuilt whenever a
-    # job hangs, so a single pathological problem cannot stall the run.
 
     def __init__(self, seconds=30):
         self.seconds = seconds
@@ -156,9 +128,6 @@ class Worker:
         if self.pool is not None:
             self.pool.terminate()
             self.pool = None
-
-
-# --- cheap structural features, no execution needed --------------------------
 
 
 def _shape(value):
@@ -189,7 +158,6 @@ def input_type(visible):
 
 
 def has_edge_case(visible):
-    # Empty, zero, negative or single element anywhere in the published inputs.
     for args in visible:
         for v in args:
             if isinstance(v, str) and len(v) <= 1:
@@ -204,9 +172,6 @@ def has_edge_case(visible):
 
 
 def input_diversity(visible):
-    # Share of argument positions where the published tests are not all the
-    # same value. A suite that varies one argument and pins the rest is only
-    # testing one axis.
     if not visible:
         return 0.0
     varied = 0
@@ -238,7 +203,6 @@ def describe(task, worker):
     row["dummy_pass_rate"] = round(_stub_job(job), 3)
 
     if job[0] is None:
-        # LiveCodeBench style tasks have no reference source to mutate.
         row["mutation_score"] = None
     else:
         score = worker.run(_mutation_job, job)

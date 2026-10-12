@@ -1,13 +1,3 @@
-# Runs the model-attack generation on Modal instead of the laptop.
-#
-# Each model gets its own container and its own attempts file. Four containers
-# writing one file is what corrupted the local run, and separate files also make
-# resume per model independent. They are merged after the fact.
-#
-#   python -m modal run modal_run.py::pull      one time, fills the model volume
-#   python -m modal run modal_run.py::verify    determinism check on Modal's GPU
-#   python -m modal run modal_run.py::launch    the real run, four in parallel
-
 import modal
 
 MODELS = [
@@ -64,8 +54,6 @@ def pull():
     serve_ollama()
     for name in MODELS:
         print(f"pulling {name}", flush=True)
-        # Output is captured rather than streamed. Ollama's progress bar emits
-        # thousands of redraw lines, which floods the client log.
         r = subprocess.run(["ollama", "pull", name],
                            capture_output=True, text=True)
         print(f"  exit {r.returncode} {r.stderr.strip()[-200:]}", flush=True)
@@ -100,9 +88,6 @@ def run_model(model: str, samples: int = 10, limit: int = 0):
     tag = model.replace(":", "_").replace(".", "_")
     path = f"/results/attempts_{tag}.jsonl"
 
-    # Committed on a timer, not only at the end. A container that dies at hour
-    # three would otherwise lose everything, and llm_attack resumes from whatever
-    # is on the volume.
     stop = threading.Event()
 
     def checkpoint():
@@ -127,9 +112,6 @@ def run_model(model: str, samples: int = 10, limit: int = 0):
 
 @app.function(volumes={"/models": model_vol}, gpu="A10G", timeout=60 * 60 * 2)
 def verify(model: str = "qwen2.5-coder:1.5b", evictor: str = "qwen2.5-coder:7b"):
-    # Everything verified locally was verified on a 4060. Different silicon means
-    # different numerics, so the determinism check has to be repeated here before
-    # the real run spends any credits.
     import json
     import os
     import sys

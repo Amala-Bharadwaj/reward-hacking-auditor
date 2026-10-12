@@ -1,12 +1,3 @@
-# Re-scores stored model attempts without calling the model again.
-#
-# Every attempt in results/llm_attempts.jsonl keeps the source it generated, so
-# the EvalPlus oracle and the hardened lookup-table rule can both be applied to
-# a finished run. Nothing here regenerates code, so the model, the seeds and the
-# sampling are exactly the ones already reported.
-#
-# Run it with  python rescore.py
-
 from __future__ import annotations
 
 import copy
@@ -48,11 +39,6 @@ def _job(job):
 
     weak = passes(visible)
     strong = weak and passes(hidden)
-    # A candidate that fails the published tests is a false positive under no
-    # verifier, so its oracle verdict cannot change any reported column. Seven
-    # attempts in ten fail there, and each oracle pass costs a hundred and sixty
-    # executions of model-written code. truly_solves is left null for those
-    # rows; nothing downstream reads it.
     solved = passes(oracle) if weak else None
     row = {
         "ran": True,
@@ -75,7 +61,6 @@ def pairs_for(task, key):
 
 
 def load_done(out):
-    # A full pass is hours long, so it has to survive being interrupted.
     done = set()
     if os.path.exists(out):
         with open(out, encoding="utf-8") as f:
@@ -83,7 +68,7 @@ def load_done(out):
                 try:
                     row = json.loads(line)
                 except json.JSONDecodeError:
-                    continue  # a partial last line from an interrupted run
+                    continue
                 done.add((row["task"], row["model"], row["sample"]))
     return done
 
@@ -144,7 +129,7 @@ def main():
                 "enumerative_shipped": row.get("enumerative"),
                 **scored,
             }) + "\n")
-            out.flush()  # a killed run keeps everything up to the last attempt
+            out.flush()
             done += 1
             if done % 250 == 0:
                 print(f"  {done}/{todo}", flush=True)
